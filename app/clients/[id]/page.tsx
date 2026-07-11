@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { Client } from "@/lib/kyc/types";
+import type { Client, KycCheck, KycDocument } from "@/lib/kyc/types";
 import { StageBadge, RiskBadge } from "@/components/badges";
 import { timeAgo } from "@/lib/kyc/format";
+import { draftIssuesSummary } from "@/lib/kyc/completeness";
+import { MissingFieldBanner } from "@/components/MissingFieldBanner";
+import { DocumentSection } from "@/components/DocumentSection";
+import { CheckSection } from "@/components/CheckSection";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +27,19 @@ export default async function ClientDetailPage({
   if (error) throw new Error(error.message);
   if (!client) notFound();
 
+  const [{ data: documents, error: docsError }, { data: checks, error: checksError }] = await Promise.all([
+    supabase.from("kyc_documents").select("*").eq("client_id", id).order("created_at").returns<KycDocument[]>(),
+    supabase.from("kyc_checks").select("*").eq("client_id", id).order("created_at").returns<KycCheck[]>(),
+  ]);
+
+  if (docsError) throw new Error(docsError.message);
+  if (checksError) throw new Error(checksError.message);
+
+  const issues = draftIssuesSummary(client, documents ?? [], checks ?? []);
+
   return (
-    <div className="max-w-3xl">
-      <div className="flex items-start justify-between mb-6">
+    <div className="max-w-3xl space-y-6">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{client.full_name}</h1>
           <div className="flex items-center gap-2 mt-2">
@@ -41,6 +55,8 @@ export default async function ClientDetailPage({
           Edit
         </Link>
       </div>
+
+      <MissingFieldBanner issues={issues} />
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6 grid grid-cols-2 gap-4 text-sm">
         <Detail label="Entity type" value={client.entity_type} />
@@ -60,6 +76,9 @@ export default async function ClientDetailPage({
           </div>
         )}
       </div>
+
+      <DocumentSection clientId={client.id} documents={documents ?? []} />
+      <CheckSection clientId={client.id} checks={checks ?? []} />
     </div>
   );
 }
