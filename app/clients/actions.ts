@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import { logActivity, recalcAndTouchClient } from "@/lib/kyc/activity";
 import { logAuditEntry } from "@/lib/kyc/audit";
+import { requireUser, actorNameFor } from "@/lib/auth/session";
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   const str = String(value ?? "").trim();
@@ -28,16 +29,18 @@ function clientPayloadFromForm(formData: FormData) {
 }
 
 export async function createClientAction(formData: FormData) {
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, "/clients/new");
+
   const payload = clientPayloadFromForm(formData);
 
   if (!payload.full_name) {
     redirect(`/clients/new?error=${encodeURIComponent("Full name is required")}`);
   }
 
-  const supabase = await createSupabaseClient();
   const { data, error } = await supabase
     .from("clients")
-    .insert(payload)
+    .insert({ ...payload, user_id: user.id })
     .select("*")
     .single();
 
@@ -45,13 +48,16 @@ export async function createClientAction(formData: FormData) {
     redirect(`/clients/new?error=${encodeURIComponent(error?.message ?? "Failed to create client")}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId: data.id,
+    actorName,
     action: `created client ${payload.full_name}`,
     objectType: "client",
     objectId: data.id,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "create_client",
     tableName: "clients",
     objectId: data.id,
@@ -66,6 +72,9 @@ export async function createClientAction(formData: FormData) {
 
 export async function updateClientAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, id ? `/clients/${id}/edit` : "/clients");
+
   const payload = clientPayloadFromForm(formData);
 
   if (!id) {
@@ -75,7 +84,6 @@ export async function updateClientAction(formData: FormData) {
     redirect(`/clients/${id}/edit?error=${encodeURIComponent("Full name is required")}`);
   }
 
-  const supabase = await createSupabaseClient();
   const { data: before } = await supabase.from("clients").select("*").eq("id", id).single();
   const { data: after, error } = await supabase.from("clients").update(payload).eq("id", id).select("*").single();
 
@@ -83,13 +91,16 @@ export async function updateClientAction(formData: FormData) {
     redirect(`/clients/${id}/edit?error=${encodeURIComponent(error.message)}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId: id,
+    actorName,
     action: `updated client details for ${payload.full_name}`,
     objectType: "client",
     objectId: id,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "update_client",
     tableName: "clients",
     objectId: id,
@@ -113,6 +124,9 @@ async function afterClientChange(supabase: Awaited<ReturnType<typeof createSupab
 
 export async function addDocumentAction(formData: FormData) {
   const clientId = String(formData.get("client_id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, clientId ? `/clients/${clientId}` : "/clients");
+
   const documentType = String(formData.get("document_type") ?? "").trim();
   const status = String(formData.get("status") ?? "pending");
   const expiryDate = emptyToNull(formData.get("expiry_date"));
@@ -122,7 +136,6 @@ export async function addDocumentAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent("Document type is required")}`);
   }
 
-  const supabase = await createSupabaseClient();
   const { data, error } = await supabase
     .from("kyc_documents")
     .insert({
@@ -130,6 +143,7 @@ export async function addDocumentAction(formData: FormData) {
       document_type: documentType,
       status,
       expiry_date: expiryDate,
+      user_id: user.id,
     })
     .select("*")
     .single();
@@ -138,13 +152,16 @@ export async function addDocumentAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent(error.message)}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId,
+    actorName,
     action: `added document ${documentType} (${status})`,
     objectType: "kyc_document",
     objectId: data?.id,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "create_document",
     tableName: "kyc_documents",
     objectId: data?.id,
@@ -156,6 +173,9 @@ export async function addDocumentAction(formData: FormData) {
 
 export async function updateDocumentStatusAction(formData: FormData) {
   const clientId = String(formData.get("client_id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, clientId ? `/clients/${clientId}` : "/clients");
+
   const documentId = String(formData.get("document_id") ?? "");
   const status = String(formData.get("status") ?? "pending");
   const rejectionReason = emptyToNull(formData.get("rejection_reason"));
@@ -164,7 +184,6 @@ export async function updateDocumentStatusAction(formData: FormData) {
     redirect(`/clients?error=${encodeURIComponent("Missing document reference")}`);
   }
 
-  const supabase = await createSupabaseClient();
   const { data: before } = await supabase.from("kyc_documents").select("*").eq("id", documentId).single();
   const { data: after, error } = await supabase
     .from("kyc_documents")
@@ -181,13 +200,16 @@ export async function updateDocumentStatusAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent(error.message)}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId,
+    actorName,
     action: `marked document ${after?.document_type ?? ""} as ${status}`,
     objectType: "kyc_document",
     objectId: documentId,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "update_document_status",
     tableName: "kyc_documents",
     objectId: documentId,
@@ -200,6 +222,9 @@ export async function updateDocumentStatusAction(formData: FormData) {
 
 export async function addCheckAction(formData: FormData) {
   const clientId = String(formData.get("client_id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, clientId ? `/clients/${clientId}` : "/clients");
+
   const checkType = String(formData.get("check_type") ?? "").trim();
   const status = String(formData.get("status") ?? "pending");
   const notes = emptyToNull(formData.get("notes"));
@@ -209,7 +234,6 @@ export async function addCheckAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent("Check type is required")}`);
   }
 
-  const supabase = await createSupabaseClient();
   const { data, error } = await supabase
     .from("kyc_checks")
     .insert({
@@ -218,6 +242,7 @@ export async function addCheckAction(formData: FormData) {
       status,
       notes,
       checked_at: status === "pending" ? null : new Date().toISOString(),
+      user_id: user.id,
     })
     .select("*")
     .single();
@@ -226,13 +251,16 @@ export async function addCheckAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent(error.message)}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId,
+    actorName,
     action: `added check ${checkType} (${status})`,
     objectType: "kyc_check",
     objectId: data?.id,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "create_check",
     tableName: "kyc_checks",
     objectId: data?.id,
@@ -244,6 +272,9 @@ export async function addCheckAction(formData: FormData) {
 
 export async function updateCheckResultAction(formData: FormData) {
   const clientId = String(formData.get("client_id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, clientId ? `/clients/${clientId}` : "/clients");
+
   const checkId = String(formData.get("check_id") ?? "");
   const status = String(formData.get("status") ?? "pending");
   const notes = emptyToNull(formData.get("notes"));
@@ -252,7 +283,6 @@ export async function updateCheckResultAction(formData: FormData) {
     redirect(`/clients?error=${encodeURIComponent("Missing check reference")}`);
   }
 
-  const supabase = await createSupabaseClient();
   const { data: before } = await supabase.from("kyc_checks").select("*").eq("id", checkId).single();
   const { data: after, error } = await supabase
     .from("kyc_checks")
@@ -269,13 +299,16 @@ export async function updateCheckResultAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent(error.message)}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId,
+    actorName,
     action: `marked check ${after?.check_type ?? ""} as ${status}`,
     objectType: "kyc_check",
     objectId: checkId,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "update_check_status",
     tableName: "kyc_checks",
     objectId: checkId,
@@ -288,11 +321,13 @@ export async function updateCheckResultAction(formData: FormData) {
 
 export async function assignReviewerAction(formData: FormData) {
   const clientId = String(formData.get("client_id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, clientId ? `/clients/${clientId}` : "/clients");
+
   const reviewerId = emptyToNull(formData.get("assigned_reviewer_id"));
 
   if (!clientId) redirect(`/clients?error=${encodeURIComponent("Missing client id")}`);
 
-  const supabase = await createSupabaseClient();
   const { data: before } = await supabase.from("clients").select("*").eq("id", clientId).single();
   const { data: after, error } = await supabase
     .from("clients")
@@ -306,14 +341,17 @@ export async function assignReviewerAction(formData: FormData) {
   }
 
   const reviewerName = (after as unknown as { team_members: { full_name: string } | null })?.team_members?.full_name;
+  const actorName = actorNameFor(user);
 
   await logActivity(supabase, {
     clientId,
+    actorName,
     action: reviewerName ? `assigned reviewer ${reviewerName}` : "unassigned reviewer",
     objectType: "client",
     objectId: clientId,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "assign_reviewer",
     tableName: "clients",
     objectId: clientId,
@@ -326,11 +364,13 @@ export async function assignReviewerAction(formData: FormData) {
 
 export async function updateNotesAction(formData: FormData) {
   const clientId = String(formData.get("client_id") ?? "");
+  const supabase = await createSupabaseClient();
+  const user = await requireUser(supabase, clientId ? `/clients/${clientId}` : "/clients");
+
   const notes = emptyToNull(formData.get("notes"));
 
   if (!clientId) redirect(`/clients?error=${encodeURIComponent("Missing client id")}`);
 
-  const supabase = await createSupabaseClient();
   const { data: before } = await supabase.from("clients").select("*").eq("id", clientId).single();
   const { data: after, error } = await supabase
     .from("clients")
@@ -343,13 +383,16 @@ export async function updateNotesAction(formData: FormData) {
     redirect(`/clients/${clientId}?error=${encodeURIComponent(error.message)}`);
   }
 
+  const actorName = actorNameFor(user);
   await logActivity(supabase, {
     clientId,
+    actorName,
     action: "updated notes",
     objectType: "client",
     objectId: clientId,
   });
   await logAuditEntry(supabase, {
+    actorName,
     action: "update_notes",
     tableName: "clients",
     objectId: clientId,

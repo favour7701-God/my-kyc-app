@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export async function logAuditEntry(
   supabase: SupabaseClient,
   params: {
+    actorName: string;
     action: string;
     tableName: string;
     objectId: string;
@@ -12,7 +13,7 @@ export async function logAuditEntry(
   },
 ) {
   await supabase.from("audit_logs").insert({
-    actor_name: "Team Member",
+    actor_name: params.actorName,
     action: params.action,
     table_name: params.tableName,
     object_id: params.objectId,

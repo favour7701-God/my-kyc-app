@@ -36,6 +36,7 @@ export async function logActivity(
   supabase: SupabaseClient,
   params: {
     clientId: string | null;
+    actorName: string;
     action: string;
     objectType?: string;
     objectId?: string;
@@ -44,7 +45,7 @@ export async function logActivity(
 ) {
   await supabase.from("activities").insert({
     client_id: params.clientId,
-    actor_name: "Team Member",
+    actor_name: params.actorName,
     action: params.action,
     object_type: params.objectType ?? null,
     object_id: params.objectId ?? null,

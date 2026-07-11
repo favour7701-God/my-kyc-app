@@ -12,6 +12,33 @@ export default async function AuditPage({
   const { client_id, actor, date } = await searchParams;
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isAdmin = (user?.user_metadata?.role as string | undefined) === "admin";
+
+  if (!user) {
+    return (
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight mb-6">Audit Trail</h1>
+        <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-500">
+          Sign in as an admin to view the audit trail.
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight mb-6">Audit Trail</h1>
+        <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-500">
+          The audit trail is visible to admins only.
+        </div>
+      </div>
+    );
+  }
+
   const { data: clients } = await supabase
     .from("clients")
     .select("id, full_name")
