@@ -21,6 +21,11 @@ export function DocumentSection({ clientId, documents }: { clientId: string; doc
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {doc.expiry_date && new Date(doc.expiry_date) < new Date() && (
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                    Expired
+                  </span>
+                )}
                 <DocumentStatusBadge status={doc.status} />
                 <form action={updateDocumentStatusAction} className="flex items-center gap-1">
                   <input type="hidden" name="client_id" value={clientId} />
@@ -31,6 +36,12 @@ export function DocumentSection({ clientId, documents }: { clientId: string; doc
                     <option value="verified">Verified</option>
                     <option value="rejected">Rejected</option>
                   </select>
+                  <input
+                    name="rejection_reason"
+                    defaultValue={doc.rejection_reason ?? ""}
+                    placeholder="Reason if rejected"
+                    className="w-32 rounded border border-neutral-300 text-xs px-1.5 py-1"
+                  />
                   <button type="submit" className="rounded border border-neutral-300 px-2 py-1 text-xs font-medium hover:bg-neutral-50">
                     Update
                   </button>

@@ -1,8 +1,8 @@
 import type { Client, KycCheck, KycDocument } from "./types";
 
-export const REQUIRED_CLIENT_FIELDS: { key: keyof Client; label: string }[] = [
+export const REQUIRED_CLIENT_FIELDS: { key: keyof Client; label: string; individualOnly?: boolean }[] = [
   { key: "full_name", label: "Full name" },
-  { key: "date_of_birth", label: "Date of birth" },
+  { key: "date_of_birth", label: "Date of birth", individualOnly: true },
   { key: "nationality", label: "Nationality" },
   { key: "email", label: "Email" },
   { key: "phone", label: "Phone" },
@@ -12,6 +12,10 @@ export const REQUIRED_CLIENT_FIELDS: { key: keyof Client; label: string }[] = [
 ];
 
 const PENDING_DOCUMENT_STALE_DAYS = 7;
+
+function requiredFieldsFor(client: Client) {
+  return REQUIRED_CLIENT_FIELDS.filter((f) => !(f.individualOnly && client.entity_type === "corporate"));
+}
 
 function daysSince(iso: string): number {
   return (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24);
@@ -26,10 +30,11 @@ export function scoreCompleteness(
   documents: KycDocument[],
   checks: KycCheck[],
 ): number {
-  const presentFields = REQUIRED_CLIENT_FIELDS.filter(
+  const requiredFields = requiredFieldsFor(client);
+  const presentFields = requiredFields.filter(
     (f) => client[f.key] !== null && client[f.key] !== "",
   ).length;
-  const fieldsScore = (presentFields / REQUIRED_CLIENT_FIELDS.length) * 60;
+  const fieldsScore = (presentFields / requiredFields.length) * 60;
 
   const docsScore =
     documents.length === 0
@@ -54,7 +59,7 @@ export function draftIssuesSummary(
 ): string[] {
   const issues: string[] = [];
 
-  for (const field of REQUIRED_CLIENT_FIELDS) {
+  for (const field of requiredFieldsFor(client)) {
     const value = client[field.key];
     if (value === null || value === "") {
       issues.push(`Missing ${field.label.toLowerCase()}`);
