@@ -81,6 +81,14 @@ export interface Activity {
   detail: string | null;
 }
 
+export interface TeamMember {
+  id: string;
+  created_at: string;
+  full_name: string;
+  email: string | null;
+  role: "admin" | "member";
+}
+
 export interface AuditLog {
   id: string;
   user_id: string | null;

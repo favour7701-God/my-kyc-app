@@ -26,6 +26,9 @@ export default function RootLayout({
             <Link href="/clients" className="text-sm text-neutral-600 hover:text-neutral-900">
               Clients
             </Link>
+            <Link href="/audit" className="text-sm text-neutral-600 hover:text-neutral-900">
+              Audit
+            </Link>
           </div>
         </nav>
         <div className="max-w-6xl mx-auto px-6 py-8">{children}</div>
